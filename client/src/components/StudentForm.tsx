@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { encryptData } from "../utils/crypto";
 import Toast from "./Toast";
+import axios from "axios";
 
 interface StudentFormProps {
   onStudentCreated: () => void;
@@ -43,71 +44,96 @@ function StudentForm({ onStudentCreated }: StudentFormProps) {
     Partial<Record<keyof StudentFormData, string>>
   >({});
 
- const handleChange = (
-  e: React.ChangeEvent<
-    HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-  >
-) => {
-  const { name, value } = e.target;
+  // ============================================================
+  // HANDLE CHANGE
+  // ============================================================
 
-  // Phone number: allow digits only and maximum 10 digits
-  if (name === "phoneNumber") {
-    const onlyNumbers = value.replace(/\D/g, "").slice(0, 10);
+  const handleChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
+  ) => {
+    const { name, value } = e.target;
+
+    // Phone number - only 10 digits
+    if (name === "phoneNumber") {
+      const onlyNumbers = value
+        .replace(/\D/g, "")
+        .slice(0, 10);
+
+      setFormData((prev) => ({
+        ...prev,
+        phoneNumber: onlyNumbers,
+      }));
+
+      setErrors((prev) => ({
+        ...prev,
+        phoneNumber: "",
+      }));
+
+      return;
+    }
 
     setFormData((prev) => ({
       ...prev,
-      phoneNumber: onlyNumbers,
+      [name]: value,
     }));
 
     setErrors((prev) => ({
       ...prev,
-      phoneNumber: "",
+      [name]: "",
     }));
+  };
 
-    return;
-  }
-
-  setFormData((prev) => ({
-    ...prev,
-    [name]: value,
-  }));
-
-  setErrors((prev) => ({
-    ...prev,
-    [name]: "",
-  }));
-};
+  // ============================================================
+  // VALIDATION
+  // ============================================================
 
   const validateForm = () => {
     const newErrors: Partial<
       Record<keyof StudentFormData, string>
     > = {};
 
+    // Full Name
     if (!formData.fullName.trim()) {
       newErrors.fullName = "Full name is required.";
     } else if (formData.fullName.trim().length < 3) {
-      newErrors.fullName = "Full name must be at least 3 characters.";
+      newErrors.fullName =
+        "Full name must be at least 3 characters.";
     }
 
+    // Email
     if (!formData.email.trim()) {
       newErrors.email = "Email is required.";
     } else if (
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        formData.email
+      )
     ) {
-      newErrors.email = "Please enter a valid email address.";
+      newErrors.email =
+        "Please enter a valid email address.";
     }
 
+    // Phone
     if (!formData.phoneNumber.trim()) {
-      newErrors.phoneNumber = "Phone number is required.";
-    } else if (!/^[0-9]{10}$/.test(formData.phoneNumber)) {
+      newErrors.phoneNumber =
+        "Phone number is required.";
+    } else if (
+      !/^[0-9]{10}$/.test(formData.phoneNumber)
+    ) {
       newErrors.phoneNumber =
         "Phone number must contain exactly 10 digits.";
     }
 
+    // Date of Birth
     if (!formData.dateOfBirth) {
-      newErrors.dateOfBirth = "Date of birth is required.";
+      newErrors.dateOfBirth =
+        "Date of birth is required.";
     } else {
-      const selectedDate = new Date(formData.dateOfBirth);
+      const selectedDate = new Date(
+        formData.dateOfBirth
+      );
+
       const today = new Date();
 
       if (selectedDate > today) {
@@ -116,23 +142,31 @@ function StudentForm({ onStudentCreated }: StudentFormProps) {
       }
     }
 
+    // Gender
     if (!formData.gender) {
       newErrors.gender = "Please select a gender.";
     }
 
+    // Address
     if (!formData.address.trim()) {
       newErrors.address = "Address is required.";
-    } else if (formData.address.trim().length < 5) {
-      newErrors.address = "Please enter a valid address.";
+    } else if (
+      formData.address.trim().length < 5
+    ) {
+      newErrors.address =
+        "Please enter a valid address.";
     }
 
+    // Course
     if (!formData.courseEnrolled) {
       newErrors.courseEnrolled =
         "Please select a course.";
     }
 
+    // Password
     if (!formData.password) {
-      newErrors.password = "Password is required.";
+      newErrors.password =
+        "Password is required.";
     } else if (formData.password.length < 6) {
       newErrors.password =
         "Password must be at least 6 characters.";
@@ -143,85 +177,71 @@ function StudentForm({ onStudentCreated }: StudentFormProps) {
     return Object.keys(newErrors).length === 0;
   };
 
+  // ============================================================
+  // SUBMIT FORM
+  // ============================================================
+
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
 
+    setToast(null);
+
+    // Validate form
     if (!validateForm()) {
       setToast({
         message: "Please fix the highlighted fields.",
         type: "error",
       });
+
       return;
     }
 
     try {
       setLoading(true);
 
-      const encryptedData = await encryptData(formData);
+      // Encrypt registration data on frontend
+      const encryptedData = await encryptData(
+        formData
+      );
 
-      const response = await fetch(
+      // Send encrypted data to backend
+      await axios.post(
         `${import.meta.env.VITE_API_URL}/register`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            data: encryptedData,
-          }),
+          data: encryptedData,
         }
       );
 
-      const result = await response.json();
-
-    if (!response.ok) {
-  throw new Error(
-    result.message || "Registration failed."
-  );
-}
-
-// Clear the complete form
-setFormData(initialForm);
-
-// Clear validation errors
-setErrors({});
-
-// Refresh student list
-onStudentCreated();
-
-// Show success toast
-setToast({
-  message: "Student registered successfully!",
-  type: "success",
-});
-      // Clear form after successful registration
+      // Registration successful
       setFormData(initialForm);
-
-      // Clear validation errors
       setErrors({});
+      setToast(null);
 
-      // Refresh student list
       onStudentCreated();
-
-      // Show success toast
-      setToast({
-        message: "Student registered successfully!",
-        type: "success",
-      });
     } catch (error) {
-      setToast({
-        message:
-          error instanceof Error
-            ? error.message
-            : "Something went wrong.",
-        type: "error",
-      });
+      if (axios.isAxiosError(error)) {
+        setToast({
+          message:
+            error.response?.data?.message ||
+            "Registration failed.",
+          type: "error",
+        });
+      } else {
+        setToast({
+          message: "Something went wrong.",
+          type: "error",
+        });
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // ============================================================
+  // UI
+  // ============================================================
 
   return (
     <>
@@ -387,15 +407,19 @@ setToast({
             }`}
           >
             <option value="">Select course</option>
+
             <option value="Computer Science">
               Computer Science
             </option>
+
             <option value="Data Science">
               Data Science
             </option>
+
             <option value="Artificial Intelligence">
               Artificial Intelligence
             </option>
+
             <option value="Information Technology">
               Information Technology
             </option>
@@ -465,7 +489,7 @@ setToast({
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-green-600 px-5 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading
               ? "Registering..."

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { decryptData, encryptData } from "../utlis/crypto";
+import { decryptData, encryptData } from "../utils/crypto";
+import axios from "axios";
 
 interface Student {
   id: string;
@@ -25,54 +26,70 @@ function StudentList({ refreshTrigger }: StudentListProps) {
   const [editingStudent, setEditingStudent] =
     useState<Student | null>(null);
 
+  // ============================================================
+  // GET STUDENTS
+  // ============================================================
+
   const fetchStudents = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await fetch(
+      const response = await axios.get(
         `${import.meta.env.VITE_API_URL}/students`
       );
 
-      const result = await response.json();
+      const result = response.data;
 
-      if (!response.ok) {
-        throw new Error(
-          result.message || "Failed to fetch students"
+      // ========================================================
+      // FRONTEND DECRYPTION
+      // ========================================================
+
+      const decryptedStudents: Student[] =
+        await Promise.all(
+          result.students.map(
+            async (student: {
+              id: string;
+              data: string;
+            }) => {
+              const decrypted =
+                await decryptData(student.data);
+
+              return {
+                id: student.id,
+                ...decrypted,
+              };
+            }
+          )
         );
-      }
-
-      const decryptedStudents: Student[] = await Promise.all(
-        result.students.map(
-          async (student: {
-            id: string;
-            data: string;
-          }) => {
-            const decrypted = await decryptData(student.data);
-
-            return {
-              id: student.id,
-              ...decrypted,
-            };
-          }
-        )
-      );
 
       setStudents(decryptedStudents);
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch students"
-      );
+      if (axios.isAxiosError(error)) {
+        setError(
+          error.response?.data?.message ||
+            "Failed to fetch students"
+        );
+      } else {
+        setError("Failed to fetch students");
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // ============================================================
+  // FETCH STUDENTS WHEN COMPONENT LOADS
+  // OR refreshTrigger CHANGES
+  // ============================================================
+
   useEffect(() => {
     fetchStudents();
   }, [refreshTrigger]);
+
+  // ============================================================
+  // DELETE STUDENT
+  // ============================================================
 
   const handleDelete = async (id: string) => {
     const confirmed = window.confirm(
@@ -84,30 +101,33 @@ function StudentList({ refreshTrigger }: StudentListProps) {
     }
 
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/student/${id}`,
-        {
-          method: "DELETE",
-        }
+      setError("");
+
+      const response = await axios.delete(
+        `${import.meta.env.VITE_API_URL}/student/${id}`
       );
 
-      const result = await response.json();
+      const result = response.data;
 
-      if (!response.ok) {
-        throw new Error(
-          result.message || "Failed to delete student"
-        );
-      }
+      console.log(result.message);
 
+      // Refresh student list
       await fetchStudents();
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to delete student"
-      );
+      if (axios.isAxiosError(error)) {
+        setError(
+          error.response?.data?.message ||
+            "Failed to delete student"
+        );
+      } else {
+        setError("Failed to delete student");
+      }
     }
   };
+
+  // ============================================================
+  // UPDATE STUDENT
+  // ============================================================
 
   const handleUpdate = async () => {
     if (!editingStudent) {
@@ -115,42 +135,53 @@ function StudentList({ refreshTrigger }: StudentListProps) {
     }
 
     try {
+      setError("");
+
+      // Separate MongoDB ID from student data
       const { id, ...studentData } = editingStudent;
 
-      const encryptedData = await encryptData(studentData);
+      // ========================================================
+      // FRONTEND ENCRYPTION
+      // ========================================================
 
-      const response = await fetch(
+      const encryptedData =
+        await encryptData(studentData);
+
+      // ========================================================
+      // UPDATE API
+      // ========================================================
+
+      const response = await axios.put(
         `${import.meta.env.VITE_API_URL}/student/${id}`,
         {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            data: encryptedData,
-          }),
+          data: encryptedData,
         }
       );
 
-      const result = await response.json();
+      const result = response.data;
 
-      if (!response.ok) {
-        throw new Error(
-          result.message || "Failed to update student"
-        );
-      }
+      console.log(result.message);
 
+      // Close edit modal
       setEditingStudent(null);
 
+      // Refresh student list
       await fetchStudents();
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to update student"
-      );
+      if (axios.isAxiosError(error)) {
+        setError(
+          error.response?.data?.message ||
+            "Failed to update student"
+        );
+      } else {
+        setError("Failed to update student");
+      }
     }
   };
+
+  // ============================================================
+  // LOADING
+  // ============================================================
 
   if (loading) {
     return (
@@ -160,19 +191,31 @@ function StudentList({ refreshTrigger }: StudentListProps) {
     );
   }
 
+  // ============================================================
+  // UI
+  // ============================================================
+
   return (
     <div>
+      {/* Error Message */}
+
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
           {error}
         </div>
       )}
 
+      {/* No Students */}
+
       {students.length === 0 ? (
         <div className="rounded-lg bg-gray-50 py-10 text-center text-gray-500">
           No students registered yet.
         </div>
       ) : (
+        /* ======================================================
+           STUDENT TABLE
+           ====================================================== */
+
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -206,25 +249,37 @@ function StudentList({ refreshTrigger }: StudentListProps) {
             <tbody className="divide-y divide-gray-200 bg-white">
               {students.map((student) => (
                 <tr key={student.id}>
+                  {/* Name */}
+
                   <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-gray-800">
                     {student.fullName}
                   </td>
+
+                  {/* Email */}
 
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-600">
                     {student.email}
                   </td>
 
+                  {/* Phone */}
+
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-600">
                     {student.phoneNumber}
                   </td>
+
+                  {/* Course */}
 
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-600">
                     {student.courseEnrolled}
                   </td>
 
+                  {/* Gender */}
+
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-600">
                     {student.gender}
                   </td>
+
+                  {/* Actions */}
 
                   <td className="whitespace-nowrap px-4 py-4 text-right">
                     <button
@@ -252,24 +307,37 @@ function StudentList({ refreshTrigger }: StudentListProps) {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* ========================================================
+          EDIT MODAL
+          ======================================================== */}
+
       {editingStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+
+            {/* Modal Header */}
+
             <div className="mb-6 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-800">
                 Edit Student
               </h3>
 
               <button
-                onClick={() => setEditingStudent(null)}
+                onClick={() =>
+                  setEditingStudent(null)
+                }
                 className="text-2xl text-gray-400 hover:text-gray-600"
               >
                 ×
               </button>
             </div>
 
+            {/* Form Fields */}
+
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
+              {/* Full Name */}
+
               <input
                 type="text"
                 value={editingStudent.fullName}
@@ -282,6 +350,8 @@ function StudentList({ refreshTrigger }: StudentListProps) {
                 placeholder="Full Name"
                 className="rounded-lg border border-gray-300 px-4 py-2.5"
               />
+
+              {/* Email */}
 
               <input
                 type="email"
@@ -296,6 +366,8 @@ function StudentList({ refreshTrigger }: StudentListProps) {
                 className="rounded-lg border border-gray-300 px-4 py-2.5"
               />
 
+              {/* Phone */}
+
               <input
                 type="tel"
                 value={editingStudent.phoneNumber}
@@ -309,6 +381,8 @@ function StudentList({ refreshTrigger }: StudentListProps) {
                 className="rounded-lg border border-gray-300 px-4 py-2.5"
               />
 
+              {/* Date of Birth */}
+
               <input
                 type="date"
                 value={editingStudent.dateOfBirth}
@@ -321,6 +395,8 @@ function StudentList({ refreshTrigger }: StudentListProps) {
                 className="rounded-lg border border-gray-300 px-4 py-2.5"
               />
 
+              {/* Gender */}
+
               <select
                 value={editingStudent.gender}
                 onChange={(e) =>
@@ -331,10 +407,20 @@ function StudentList({ refreshTrigger }: StudentListProps) {
                 }
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2.5"
               >
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
+                <option value="Male">
+                  Male
+                </option>
+
+                <option value="Female">
+                  Female
+                </option>
+
+                <option value="Other">
+                  Other
+                </option>
               </select>
+
+              {/* Course */}
 
               <input
                 type="text"
@@ -350,6 +436,8 @@ function StudentList({ refreshTrigger }: StudentListProps) {
               />
             </div>
 
+            {/* Address */}
+
             <textarea
               value={editingStudent.address}
               onChange={(e) =>
@@ -362,6 +450,8 @@ function StudentList({ refreshTrigger }: StudentListProps) {
               rows={3}
               className="mt-4 w-full rounded-lg border border-gray-300 px-4 py-2.5"
             />
+
+            {/* Password */}
 
             <input
               type="password"
@@ -376,9 +466,14 @@ function StudentList({ refreshTrigger }: StudentListProps) {
               className="mt-4 w-full rounded-lg border border-gray-300 px-4 py-2.5"
             />
 
+            {/* Buttons */}
+
             <div className="mt-6 flex justify-end gap-3">
+
               <button
-                onClick={() => setEditingStudent(null)}
+                onClick={() =>
+                  setEditingStudent(null)
+                }
                 className="rounded-lg border border-gray-300 px-5 py-2.5 font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
@@ -390,6 +485,7 @@ function StudentList({ refreshTrigger }: StudentListProps) {
               >
                 Save Changes
               </button>
+
             </div>
           </div>
         </div>

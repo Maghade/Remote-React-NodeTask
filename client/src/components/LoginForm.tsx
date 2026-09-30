@@ -1,4 +1,5 @@
 import { useState } from "react";
+import axios from "axios";
 
 interface LoginFormProps {
   onLogin: () => void;
@@ -10,23 +11,29 @@ function LoginForm({ onLogin }: LoginFormProps) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // ============================================================
+  // LOGIN SUBMIT
+  // ============================================================
+
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
-
     setError("");
 
+    // Email required
     if (!email.trim()) {
       setError("Email is required.");
       return;
     }
 
-    if (!email.includes("@")) {
+    // Email validation
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Please enter a valid email.");
       return;
     }
 
+    // Password required
     if (!password) {
       setError("Password is required.");
       return;
@@ -35,35 +42,35 @@ function LoginForm({ onLogin }: LoginFormProps) {
     try {
       setLoading(true);
 
-      const response = await fetch(
+      // ========================================================
+      // LOGIN API
+      // ========================================================
+
+      const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/login`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email,
-            password,
-          }),
+          email,
+          password,
         }
       );
 
-      const result = await response.json();
+      const result = response.data;
 
-      if (!response.ok) {
-        throw new Error(
-          result.message || "Login failed."
-        );
-      }
+      // ========================================================
+      // LOGIN SUCCESS
+      // ========================================================
 
+      console.log(result.message);
       onLogin();
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Unable to login."
-      );
+      if (axios.isAxiosError(error)) {
+        setError(
+          error.response?.data?.message ||
+            "Unable to login."
+        );
+      } else {
+        setError("Unable to login.");
+      }
     } finally {
       setLoading(false);
     }
@@ -72,21 +79,23 @@ function LoginForm({ onLogin }: LoginFormProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-
+        {/* Heading */}
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-800">
             Student Management
           </h1>
 
           <p className="mt-2 text-gray-500">
-            Sign in to continue
+            Registration successful. Sign in to continue.
           </p>
         </div>
 
+        {/* Login Form */}
         <form
           onSubmit={handleSubmit}
           className="space-y-5"
         >
+          {/* Email */}
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Email
@@ -95,12 +104,15 @@ function LoginForm({ onLogin }: LoginFormProps) {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
               placeholder="student@example.com"
               className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
+          {/* Password */}
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Password
@@ -109,18 +121,22 @@ function LoginForm({ onLogin }: LoginFormProps) {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
               placeholder="Enter your password"
               className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
+          {/* Error */}
           {error && (
             <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
               {error}
             </div>
           )}
 
+          {/* Login Button */}
           <button
             type="submit"
             disabled={loading}
@@ -129,7 +145,6 @@ function LoginForm({ onLogin }: LoginFormProps) {
             {loading ? "Signing in..." : "Login"}
           </button>
         </form>
-
       </div>
     </div>
   );
