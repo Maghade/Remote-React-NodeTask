@@ -21,8 +21,7 @@ export const registerStudent = async (
       });
     }
 
-    // Data has already been encrypted once by the frontend.
-    // Backend adds the second encryption layer.
+    
     const doubleEncryptedData = encryptBackendData(data);
 
     const student = await Student.create({
